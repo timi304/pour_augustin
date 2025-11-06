@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>augustin — chaos</title>
+<style>
+  :root{
+    --bg:#0b0b0b;
+    --glow: 0 0 30px rgba(255,255,255,0.06);
+  }
+  html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .center{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:50;pointer-events:none;
+  }
+  h1{
+    font-size:clamp(48px,14vw,220px);letter-spacing:0.02em;color:white;text-transform:lowercase;position:relative;
+    filter:drop-shadow(0 6px 30px rgba(0,0,0,0.8));
+  }
+  /* Glitch layers */
+  .glitch{
+    position:relative;
+    pointer-events:auto;
+    user-select:none;
+  }
+  .glitch::before, .glitch::after{
+    content:attr(data-text);
+    position:absolute;left:0;top:0;width:100%;height:100%;
+    mix-blend-mode:screen;opacity:0.9;
+  }
+  .glitch::before{color:#ff004d;transform:translate(-6px,-2px);clip-path:rect(0,9999px,60px,0);animation:glitchTop 2s infinite linear}
+  .glitch::after{color:#00ffd5;transform:translate(6px,2px);clip-path:rect(60px,9999px,9999px,0);animation:glitchBot 1.8s infinite linear}
+  @keyframes glitchTop{0%{transform:translate(-6px,-2px)}10%{transform:translate(10px,-4px)}20%{transform:translate(-8px,3px)}30%{transform:translate(6px,-6px)}40%{transform:translate(0,0)}50%{transform:translate(-12px,2px)}60%{transform:translate(8px,-1px)}70%{transform:translate(-6px,4px)}80%{transform:translate(2px,-2px)}90%{transform:translate(-10px,1px)}100%{transform:translate(-6px,-2px)} }
+  @keyframes glitchBot{0%{transform:translate(6px,2px)}10%{transform:translate(-8px,6px)}20%{transform:translate(10px,-3px)}30%{transform:translate(-6px,8px)}40%{transform:translate(0,0)}50%{transform:translate(12px,-2px)}60%{transform:translate(-4px,6px)}70%{transform:translate(6px,-4px)}80%{transform:translate(-2px,2px)}90%{transform:translate(10px,-5px)}100%{transform:translate(6px,2px)} }
+
+  /* flicker background and random hue shifts */
+  .bg-flicker{
+    position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(circle at 20% 30%, rgba(255,255,255,0.03), transparent 10%),
+      radial-gradient(circle at 80% 70%, rgba(255,255,255,0.02), transparent 12%), linear-gradient(45deg,#08121a,#0b0016);
+    animation: hueSpin 12s infinite linear, bgPulse 4s infinite ease-in-out;
+    mix-blend-mode:screen;
+  }
+  @keyframes hueSpin{0%{filter:hue-rotate(0deg)}50%{filter:hue-rotate(120deg)}100%{filter:hue-rotate(360deg)}}
+  @keyframes bgPulse{0%{opacity:0.9}50%{opacity:1}100%{opacity:0.9}}
+
+  /* tiny UI controls */
+  .controls{position:fixed;right:16px;top:16px;z-index:60;display:flex;gap:8px}
+  .btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:white;padding:8px 12px;border-radius:10px;backdrop-filter:blur(4px);cursor:pointer}
+
+  /* screen shake when chaotic */
+  .shake{animation:shake 0.6s infinite linear}
+  @keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-6px,4px) rotate(-0.6deg)}50%{transform:translate(4px,-6px) rotate(0.6deg)}75%{transform:translate(-4px,6px) rotate(-0.6deg)}100%{transform:translate(0,0)}}
+
+  /* small footer hint */
+  .hint{position:fixed;left:16px;bottom:16px;color:rgba(255,255,255,0.5);font-size:12px;z-index:60}
+
+  /* overlay to force click (autoplay fallback) */
+  .launch-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:80}
+  .launch-overlay .cta{background:linear-gradient(135deg,#ff005c,#00ffd5);color:#050505;padding:20px 30px;border-radius:14px;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,0.6);cursor:pointer}
+
+</style>
+</head>
+<body>
+  <div class="bg-flicker" id="bg"></div>
+  <canvas id="c" width="800" height="600" style="position:fixed;inset:0;z-index:10"></canvas>
+
+  <div class="center">
+    <h1 class="glitch" id="name" data-text="augustin">augustin</h1>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="toggleSound">Désactiver son</button>
+    <button class="btn" id="randomize">+ Chaotique</button>
+  </div>
+  <div class="hint">Clique pour lancer — puis prépare-toi.</div>
+
+  <div class="launch-overlay" id="overlay">
+    <div class="cta" id="startBtn">CLIQUE ICI POUR LANCER LE BORDEL</div>
+  </div>
+
+<script>
+// --- Canvas particles: color bursts ---
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = canvas.width = innerWidth; let H = canvas.height = innerHeight;
+window.addEventListener('resize', ()=>{W=canvas.width=innerWidth;H=canvas.height=innerHeight});
+
+class Particle{
+  constructor(x,y, hue){this.x=x;this.y=y;this.vx=(Math.random()-0.5)*8;this.vy=(Math.random()-0.5)*8;this.size=2+Math.random()*6;this.life=60+Math.random()*80;this.hue=hue}
+  update(){this.x+=this.vx;this.y+=this.vy;this.vx*=0.98;this.vy*=0.98;this.size*=0.98;this.life--}
+  draw(){ctx.beginPath();ctx.fillStyle=`hsl(${this.hue},100%,60%)`;ctx.globalAlpha=Math.max(0, this.life/120);ctx.arc(this.x,this.y,this.size,0,Math.PI*2);ctx.fill();}
+}
+let parts=[];
+function burst(x,y,count=60){const base = Math.random()*360;for(let i=0;i<count;i++)parts.push(new Particle(x,y,(base+i*6)%360));}
+
+function loop(){ctx.clearRect(0,0,W,H);
+  // subtle trailing
+  ctx.fillStyle='rgba(3,3,3,0.2)';ctx.fillRect(0,0,W,H);
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.update();p.draw();if(p.life<=0||p.size<0.3)parts.splice(i,1);}requestAnimationFrame(loop);}loop();
+
+// make random bursts occasionally
+let chaosLevel=1; // 1..5
+setInterval(()=>{if(Math.random() < 0.8){const x=Math.random()*W;const y=Math.random()*H;burst(x,y,20*chaosLevel);} },400);
+
+// --- text jitter and random effects ---
+const nameEl = document.getElementById('name');
+function pulseName(){nameEl.style.transform = `scale(${1+Math.random()*0.06}) rotate(${(Math.random()-0.5)*2}deg)`;nameEl.style.opacity = 0.85+Math.random()*0.2}
+setInterval(pulseName,120);
+
+// occasional big burst at center synced with shake
+function bigBoom(){burst(W/2,H/2,120+Math.floor(Math.random()*200));document.body.classList.add('shake');setTimeout(()=>document.body.classList.remove('shake'),600);}
+setInterval(()=>{if(Math.random() < 0.25) bigBoom();},2000);
+
+// --- WebAudio: messy noise + glitch beeps ---
+let audioCtx, master;
+let playing = false;
+function initAudio(){audioCtx = new (window.AudioContext || window.webkitAudioContext)();master=audioCtx.createGain();master.gain.value=0.6;master.connect(audioCtx.destination);
+}
+
+function noiseBurst(volume=0.15,duration=0.6){const bufferSize = audioCtx.sampleRate * duration;const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);const data=buffer.getChannelData(0);for(let i=0;i<bufferSize;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/bufferSize*2);const node = audioCtx.createBufferSource();node.buffer=buffer;const g=audioCtx.createGain();g.gain.value=volume;node.connect(g);g.connect(master);node.start();setTimeout(()=>{node.stop();node.disconnect();g.disconnect();},duration*1000+50)}
+
+function glitchSeq(){if(!playing) return; const now=audioCtx.currentTime;const osc = audioCtx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(80+Math.random()*120, now);
+const g=audioCtx.createGain();g.gain.value=0.0001;osc.connect(g);g.connect(master);osc.start();
+// quick stutter
+g.gain.exponentialRampToValueAtTime(0.2, now+0.02);
+g.gain.exponentialRampToValueAtTime(0.0001, now+0.12);
+osc.stop(now+0.14);
+}
+
+function startChaos(){if(!audioCtx) initAudio();if(audioCtx.state==='suspended') audioCtx.resume();playing=true;overlay.style.display='none';startAmbient();}
+
+function startAmbient(){if(!playing) return; // ambient: gentle oscillators + occasional noise
+  // low drone
+  const drone = audioCtx.createOscillator();drone.type='sine';drone.frequency.value=40+Math.random()*40;const dg=audioCtx.createGain();dg.gain.value=0.03;drone.connect(dg);dg.connect(master);drone.start();
+  // random events
+  const ev = setInterval(()=>{if(!playing){clearInterval(ev);drone.stop();dg.disconnect();return;} if(Math.random()<0.6) noiseBurst(0.08+Math.random()*0.18,0.15+Math.random()*0.7); if(Math.random()<0.6) glitchSeq(); if(Math.random()<0.08) bigBoom();},260);
+}
+
+// overlay and controls
+const overlay = document.getElementById('overlay');const startBtn = document.getElementById('startBtn');
+startBtn.addEventListener('click', ()=>{try{startChaos();}catch(e){console.error(e);}});
+
+// toggle sound
+const toggle = document.getElementById('toggleSound');toggle.addEventListener('click', ()=>{
+  if(!audioCtx){toggle.textContent='Son inactif';return;} playing = !playing; if(!playing){master.gain.value=0;toggle.textContent='Activer son';}else{master.gain.value=0.6;toggle.textContent='Désactiver son';}}
+);
+
+// randomize chaos intensity
+const randomize = document.getElementById('randomize');randomize.addEventListener('click', ()=>{chaosLevel = Math.min(6, chaosLevel+1); for(let i=0;i<3;i++)burst(Math.random()*W,Math.random()*H,20*chaosLevel);document.body.style.filter = `hue-rotate(${Math.floor(Math.random()*360)}deg)`});
+
+// cheeky automatic small glitches to DOM
+setInterval(()=>{document.documentElement.style.setProperty('--glow', `${Math.random()*40}px ${Math.random()*40}px ${10+Math.random()*60}px rgba(255,255,255,0.03)`); if(Math.random()<0.12){nameEl.dataset.text = Math.random().toString(36).slice(2,8); nameEl.textContent=nameEl.dataset.text; setTimeout(()=>{nameEl.dataset.text='augustin';nameEl.textContent='augustin';},220);} },300);
+
+// mouse interaction creates bursts
+window.addEventListener('mousemove', (e)=>{if(Math.random()<0.06) burst(e.clientX,e.clientY,6);});
+window.addEventListener('click', (e)=>{burst(e.clientX,e.clientY,30); if(audioCtx && playing) glitchSeq();});
+
+// small fallback: try autoplay (may be blocked)
+window.addEventListener('load', ()=>{try{if(!audioCtx) initAudio(); // try playing a tiny click
+  const t = setTimeout(()=>{if(audioCtx.state!=='running'){overlay.style.display='flex'}},300);}catch(e){overlay.style.display='flex'}});
+
+// secret keyboard chaos
+window.addEventListener('keydown',(e)=>{if(e.key==='b'){bigBoom(); if(audioCtx && playing) noiseBurst(0.3,0.6);} if(e.key==='r'){location.reload();}});
+
+</script>
+</body>
+</html>
